@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>TMV Service Tracker</title>
+<style>
+:root{--bg:#f4f6f8;--card:#fff;--text:#1b2733;--muted:#5d6b78;--line:#cdd5dc;--accent:#0b6bcb;--accent-text:#fff;--danger:#c62828;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#12181e;--card:#1c252e;--text:#e8eef3;--muted:#9aa9b6;--line:#34424f;--accent:#4a9df0;--accent-text:#08121c;--danger:#ef6b6b;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#12181e;--card:#1c252e;--text:#e8eef3;--muted:#9aa9b6;--line:#34424f;--accent:#4a9df0;--accent-text:#08121c;--danger:#ef6b6b;color-scheme:dark}
+*,*::before,*::after{box-sizing:inherit}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:560px;margin:0 auto;padding:16px}
+h1{font-size:1.3rem;margin:4px 0 12px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:14px}
+label.l{display:block;font-weight:600;font-size:.9rem;margin:10px 0 4px}
+label.l:first-child{margin-top:0}
+input[type=text],input[type=number],textarea{width:100%;font:inherit;color:var(--text);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px}
+input.med{width:60%}
+input.temp{width:90px}
+textarea{min-height:110px;resize:vertical}
+.checks{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px}
+.chk{display:flex;align-items:center;gap:8px;font-size:.9rem;border:1px solid var(--line);border-radius:8px;padding:8px}
+.chk input{width:20px;height:20px;flex:none;accent-color:var(--accent)}
+.count{font-size:.8rem;color:var(--muted);text-align:right}
+.head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.head b{font-size:1.05rem}
+button{font:inherit;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--text);padding:12px 14px;cursor:pointer}
+button.primary{background:var(--accent);color:var(--accent-text);border-color:var(--accent);font-weight:600}
+button.rm{color:var(--danger);padding:6px 10px;font-size:.85rem}
+.row{display:flex;gap:10px;flex-wrap:wrap}
+.row button{flex:1}
+#out{display:none;margin-top:12px}
+#out textarea{min-height:220px;font-family:ui-monospace,Menlo,monospace;font-size:.8rem}
+.msg{font-size:.85rem;color:var(--muted);margin:6px 0 0}
+</style>
+</head>
+<body>
+<main>
+<h1>TMV Service Tracker</h1>
+
+<div class="card">
+  <label class="l" for="site">Site name</label>
+  <input type="text" id="site" autocomplete="off">
+  <label class="l" for="num">Site number</label>
+  <input type="text" id="num" class="med" autocomplete="off">
+</div>
+
+<div id="tmvs"></div>
+
+<div class="row" style="margin-bottom:14px">
+  <button class="primary" id="add">+ Add another</button>
+</div>
+
+<div class="card">
+  <div class="row">
+    <button class="primary" id="send">Finish visit &amp; send</button>
+    <button id="reset">New site</button>
+  </div>
+  <p class="msg">“Finish visit &amp; send” opens your share sheet so you can pick the group text or save to Files. If it can’t, copy the report below and paste it into your group chat or Notes.</p>
+  <div id="out">
+    <textarea id="report" readonly></textarea>
+    <div class="row" style="margin-top:8px"><button id="copy">Copy report</button></div>
+    <p class="msg" id="status"></p>
+  </div>
+</div>
+</main>
+
+<script>
+var KEY="tmv-tracker-v1",MAXW=500;
+var LABELS=["Fail safe","Isolations","Needs replacement","Replacement can be done"];
+var state={site:"",num:"",tmvs:[blank()]};
+function blank(){return{temp:"",room:"",f:[false,false,false,false],r:["","",""],notes:""}}
+function load(){try{var s=localStorage.getItem(KEY);if(s){var o=JSON.parse(s);if(o&&o.tmvs&&o.tmvs.length)state=o}}catch(e){}}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(state))}catch(e){}}
+function words(t){var m=t.trim().match(/\S+/g);return m?m.length:0}
+function clip(t,m){var p=t.split(/(\s+)/),n=0,out="";for(var i=0;i<p.length;i++){if(/\S/.test(p[i])){n++;if(n>(m||MAXW))break}out+=p[i]}return out}
+function el(tag,attrs,kids){var e=document.createElement(tag);for(var k in attrs||{}){if(k==="class")e.className=attrs[k];else e[k]=attrs[k]}(kids||[]).forEach(function(c){e.appendChild(typeof c==="string"?document.createTextNode(c):c)});return e}
+
+function render(){
+  var box=document.getElementById("tmvs");box.innerHTML="";
+  state.tmvs.forEach(function(t,i){
+    var card=el("div",{class:"card"});
+    var head=el("div",{class:"head"},[el("b",{},["TMV "+(i+1)])]);
+    if(state.tmvs.length>1){var rm=el("button",{class:"rm",type:"button",textContent:"Remove"});rm.onclick=function(){if(confirm("Remove TMV "+(i+1)+"?")){state.tmvs.splice(i,1);save();render()}};head.appendChild(rm)}
+    card.appendChild(head);
+
+    card.appendChild(el("label",{class:"l",textContent:"Temperature"}));
+    var tp=el("input",{type:"text",className:"temp",inputMode:"numeric",maxLength:2,value:t.temp,placeholder:"00"});
+    tp.oninput=function(){tp.value=tp.value.replace(/\D/g,"").slice(0,2);t.temp=tp.value;save()};
+    card.appendChild(tp);
+
+    card.appendChild(el("label",{class:"l",textContent:"Room number or name"}));
+    var rm2=el("input",{type:"text",value:t.room,autocomplete:"off"});
+    rm2.oninput=function(){t.room=rm2.value;save()};
+    card.appendChild(rm2);
+
+    t.r=t.r||["","",""];
+    var ext=el("div",{});
+    ext.style.display=t.f[3]?"block":"none";
+    ["Cartridge replacement","T.M.V replacement","Photos taken"].forEach(function(nm,k){
+      ext.appendChild(el("label",{class:"l",textContent:(k+1)+" – "+nm+" (max 300 words)"}));
+      var x=el("textarea",{value:t.r[k]});x.style.minHeight="70px";
+      var c2=el("div",{class:"count"});
+      function u2(){c2.textContent=words(x.value)+" / 300 words"}
+      x.oninput=function(){if(words(x.value)>300)x.value=clip(x.value,300);t.r[k]=x.value;u2();save()};
+      u2();ext.appendChild(x);ext.appendChild(c2);
+    });
+    var cg=el("div",{class:"checks"});
+    LABELS.forEach(function(lb,j){
+      var cb=el("input",{type:"checkbox",checked:t.f[j]});
+      cb.onchange=function(){t.f[j]=cb.checked;if(j===3)ext.style.display=cb.checked?"block":"none";save()};
+      cg.appendChild(el("label",{class:"chk"},[cb,(j+1)+" – "+lb]));
+    });
+    card.appendChild(cg);card.appendChild(ext);
+
+    card.appendChild(el("label",{class:"l",textContent:"Notes (max 500 words)"}));
+    var ta=el("textarea",{value:t.notes});
+    var ct=el("div",{class:"count"});
+    function upd(){ct.textContent=words(ta.value)+" / "+MAXW+" words"}
+    ta.oninput=function(){if(words(ta.value)>MAXW)ta.value=clip(ta.value);t.notes=ta.value;upd();save()};
+    upd();card.appendChild(ta);card.appendChild(ct);
+    box.appendChild(card);
+  });
+}
+
+function report(){
+  var d=new Date().toLocaleString();
+  var L=["TMV SERVICE REPORT","Site: "+(state.site||"-"),"Site no: "+(state.num||"-"),"Date: "+d,"TMVs serviced: "+state.tmvs.length,""];
+  state.tmvs.forEach(function(t,i){
+    var fl=LABELS.filter(function(_,j){return t.f[j]});
+    L.push("TMV "+(i+1)+" – Room: "+(t.room||"-")+" – Temp: "+(t.temp||"-"));
+    L.push("  Flags: "+(fl.length?fl.join(", "):"none"));
+    if(t.f[3]){var R=["Cartridge replacement","T.M.V replacement","Photos taken"];(t.r||[]).forEach(function(v,k){if(v.trim())L.push("  "+R[k]+": "+v.trim())})}
+    if(t.notes.trim())L.push("  Notes: "+t.notes.trim());
+    L.push("");
+  });
+  return L.join("\n");
+}
+
+function copyText(txt){
+  var ok=false;
+  try{var r=document.getElementById("report");r.select();ok=document.execCommand("copy")}catch(e){}
+  if(!ok&&navigator.clipboard){return navigator.clipboard.writeText(txt).then(function(){return true},function(){return false})}
+  return Promise.resolve(ok);
+}
+function status(m){document.getElementById("status").textContent=m}
+
+document.getElementById("site").oninput=function(e){state.site=e.target.value;save()};
+document.getElementById("num").oninput=function(e){state.num=e.target.value;save()};
+document.getElementById("add").onclick=function(){state.tmvs.push(blank());save();render();window.scrollTo(0,document.body.scrollHeight)};
+document.getElementById("send").onclick=function(){
+  var txt=report();
+  document.getElementById("out").style.display="block";
+  document.getElementById("report").value=txt;
+  status("");
+  var title="TMV report – "+(state.site||"site");
+  if(navigator.share){
+    navigator.share({title:title,text:txt}).catch(function(e){if(e&&e.name!=="AbortError")status("Couldn’t open sharing – tap Copy report instead.")});
+  }else{status("Tap Copy report, then paste into your group text or Notes.")}
+};
+document.getElementById("copy").onclick=function(){copyText(document.getElementById("report").value).then(function(ok){status(ok?"Copied. Paste it into your group text or Notes.":"Couldn’t copy – press and hold the text to select it.")})};
+document.getElementById("reset").onclick=function(){
+  if(confirm("Start a new site? This clears the current site and all TMVs on this device.")){
+    state={site:"",num:"",tmvs:[blank()]};save();
+    document.getElementById("site").value="";document.getElementById("num").value="";
+    document.getElementById("out").style.display="none";render();window.scrollTo(0,0);
+  }
+};
+load();
+document.getElementById("site").value=state.site;
+document.getElementById("num").value=state.num;
+render();
+</script>
+</body>
+</html>
